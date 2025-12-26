@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Corazón 3D Eterno</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width, height, heartParticles = [], phrases = [], stars = [];
+let rotationX = 0.5, rotationY = 0.5, targetRotationX = 0.5, targetRotationY = 0.5;
+let mouseX = -100, mouseY = -100;
+let isDragging = false, lastMouseX = 0, lastMouseY = 0;
+let pulse = 0, scaleFactor = 1;
+
+const TEXTS = [
+    "Te amo infinitamente ♾️❤️", "Eres mi vida entera 👩‍❤️‍👨", "Mi corazón es tuyo 💖🔐", 
+    "Juntos por siempre 💍", "Sueño cumplido 🎀✨", "Mi amor eterno 🌹", 
+    "Contigo todo es mejor 👩‍❤️‍💋‍👨", "Mi luz 🕯️💗", "Late por ti 💓🥁", 
+    "Pedacito de cielo ☁️💕", "Para siempre 🫂❤️", "Mi favorita 👫💖", 
+    "Amo todo de ti 💘", "Mi refugio 🏠💞", "Mi bendición 🙏💗", 
+    "Nacimos para amarnos 🧩❤️", "Mi destino es contigo 📍💝", "Me haces feliz 😊💕", 
+    "Amor puro 💎❤️", "Mi alegría diaria ☀️💖", "Mi gran amor ❤️", 
+    "Te elijo cada día 📅💞", "Eres mi tesoro 🎁💖", "Soy completa contigo 🌸💗", 
+    "Mi dulce amor 🍭❤️", "Amor de mi alma 🤝💕", "Eres mi inspiración 🎨💖", 
+    "Tu amor me hace bien 🕊️❤️", "Mi mundo entero 🌍💘", "Siempre en mi mente 💭❤️"
+];
+
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    scaleFactor = Math.min(width, height) / 850;
+    if (scaleFactor < 0.6) scaleFactor = 0.6;
+    initElements();
+}
+
+class HeartParticle {
+    constructor() {
+        // Generación de volumen 3D real
+        // Utilizamos coordenadas esféricas para rellenar un volumen
+        let phi = Math.random() * Math.PI * 2;
+        let theta = Math.random() * Math.PI;
+        let r = Math.random(); 
+
+        // Fórmula de superficie de corazón 3D (basada en coordenadas paramétricas)
+        // Escalamos r para que rellene el interior
+        let sinT = Math.sin(theta);
+        let x = r * 16 * Math.pow(Math.sin(phi), 3) * sinT;
+        let y = r * (13 * Math.cos(phi) - 5 * Math.cos(2*phi) - 2 * Math.cos(3*phi) - Math.cos(4*phi)) * sinT;
+        let z = r * 10 * Math.cos(theta); // Profundidad real en Z
+
+        this.x = x * 15;
+        this.y = -y * 15;
+        this.z = z * 10;
+        
+        // Colores con gradiente de profundidad
+        const h = Math.random() > 0.8 ? 355 : Math.random() * 20 + 330;
+        this.color = `hsl(${h}, 100%, ${60 + (z * 2)}%)`;
+        this.size = Math.random() * 1.8 + 0.4;
+    }
+
+    draw() {
+        // Rotación en 3D real de cada partícula
+        let x1 = this.x * Math.cos(rotationY) - this.z * Math.sin(rotationY);
+        let z1 = this.x * Math.sin(rotationY) + this.z * Math.cos(rotationY);
+        let y2 = this.y * Math.cos(rotationX) - z1 * Math.sin(rotationX);
+        let z2 = this.y * Math.sin(rotationX) + z1 * Math.cos(rotationX);
+        
+        // Proyección de perspectiva
+        let p = 1000 / (1000 - (z2 * scaleFactor));
+        let pulseAmp = Math.sin(pulse) * 0.08 + 1;
+        let s = this.size * p * pulseAmp * scaleFactor;
+
+        // Dibujar solo si está frente a la cámara (opcional para rendimiento)
+        ctx.globalAlpha = Math.max(0.1, (p - 0.5));
+        ctx.fillStyle = this.color;
+        
+        // Brillo volumétrico
+        ctx.shadowBlur = s * 4;
+        ctx.shadowColor = this.color;
+        
+        ctx.beginPath();
+        ctx.arc(x1 * p * scaleFactor + width/2, y2 * p * scaleFactor + height/2, s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+class Phrase {
+    constructor(text, i) {
+        this.text = text;
+        this.angle = (i / TEXTS.length) * Math.PI * 2;
+        this.radius = (360 + (i % 5) * 60) * scaleFactor;
+        this.yOffset = (Math.random() - 0.5) * 700 * scaleFactor;
+        this.speed = 0.0005 + Math.random() * 0.0007;
+        this.isLocked = false; 
+    }
+
+    update() {
+        if (!this.isLocked) this.angle += this.speed;
+    }
+
+    draw() {
+        let x = Math.cos(this.angle) * this.radius;
+        let z = Math.sin(this.angle) * this.radius;
+        let y = this.yOffset;
+
+        let x1 = x * Math.cos(rotationY) - z * Math.sin(rotationY);
+        let z1 = x * Math.sin(rotationY) + z * Math.cos(rotationY);
+        let y2 = y * Math.cos(rotationX) - z1 * Math.sin(rotationX);
+        let z2 = y * Math.sin(rotationX) + z1 * Math.cos(rotationX);
+
+        let p = 1000 / (1000 - z2);
+        let screenX = x1 * p + width / 2;
+        let screenY = y2 * p + height / 2;
+
+        let dist = Math.sqrt((mouseX - screenX)**2 + (mouseY - screenY)**2);
+        if (isDragging && dist < (70 * scaleFactor)) {
+            this.isLocked = true;
+        } else if (!isDragging) {
+            this.isLocked = false;
+        }
+
+        ctx.font = `${this.isLocked ? 30 * scaleFactor : 14 * scaleFactor * p}px sans-serif`;
+        ctx.fillStyle = this.isLocked ? "#00FFFF" : `rgba(255, 255, 255, ${Math.min(1, p - 0.2)})`;
+        
+        if(this.isLocked) {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00FFFF";
+        }
+
+        ctx.textAlign = "center";
+        ctx.fillText(this.text, screenX, screenY);
+        ctx.shadowBlur = 0;
+    }
+}
+
+function initElements() {
+    heartParticles = []; phrases = []; stars = [];
+    // 3500 partículas para dar volumen real
+    for (let i = 0; i < 3500; i++) heartParticles.push(new HeartParticle());
+    TEXTS.forEach((t, i) => phrases.push(new Phrase(t, i)));
+    for (let i = 0; i < 250; i++) {
+        stars.push({x: Math.random()*width, y: Math.random()*height, s: Math.random()*1.5, o: Math.random(), b: Math.random()*0.02});
+    }
+}
+
+function animate() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    pulse += 0.045;
+
+    stars.forEach(s => {
+        s.o += s.b;
+        if(s.o > 1 || s.o < 0.2) s.b *= -1;
+        ctx.fillStyle = `rgba(255,255,255,${s.o})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI*2); ctx.fill();
+    });
+
+    rotationX += (targetRotationX - rotationX) * 0.05;
+    rotationY += (targetRotationY - rotationY) * 0.05;
+    
+    if(!isDragging) targetRotationY += 0.0007;
+
+    // Ordenar partículas por profundidad (Z) para que las de adelante tapen a las de atrás
+    // Esto es clave para el efecto 3D
+    heartParticles.sort((a, b) => {
+        let zA = a.x * Math.sin(rotationY) + a.z * Math.cos(rotationY);
+        let zB = b.x * Math.sin(rotationY) + b.z * Math.cos(rotationY);
+        return zA - zB;
+    });
+
+    heartParticles.forEach(p => p.draw());
+    phrases.forEach(ph => { ph.update(); ph.draw(); });
+
+    requestAnimationFrame(animate);
+}
+
+const handleInput = (e) => {
+    const clientX = e.clientX || (e.touches ? e.touches[0].clientX : mouseX);
+    const clientY = e.clientY || (e.touches ? e.touches[0].clientY : mouseY);
+    if (isDragging) {
+        const overAnyPhrase = phrases.some(ph => ph.isLocked);
+        if (!overAnyPhrase) {
+            targetRotationY += (clientX - lastMouseX) * 0.01;
+            targetRotationX -= (clientY - lastMouseY) * 0.01;
+        }
+    }
+    mouseX = clientX; mouseY = clientY;
+    lastMouseX = clientX; lastMouseY = clientY;
+};
+
+window.addEventListener('mousedown', (e) => { isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; handleInput(e); });
+window.addEventListener('mouseup', () => { isDragging = false; });
+window.addEventListener('mousemove', handleInput);
+window.addEventListener('touchstart', (e) => { isDragging = true; lastMouseX = e.touches[0].clientX; lastMouseY = e.touches[0].clientY; handleInput(e); });
+window.addEventListener('touchend', () => { isDragging = false; mouseX = -100; mouseY = -100; });
+window.addEventListener('touchmove', handleInput);
+window.addEventListener('resize', resize);
+
+resize();
+animate();
+</script>
+</body>
+</html>
